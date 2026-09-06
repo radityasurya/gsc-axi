@@ -1,6 +1,6 @@
 {
   "name": "gsc-axi",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AXI-compliant Google Search Console CLI — search performance, URL inspection, and sitemaps with token-efficient TOON output",
   "keywords": [
     "axi",

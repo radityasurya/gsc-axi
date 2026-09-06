@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/radityasurya/gsc-axi/compare/v0.1.1...v0.1.2) (2026-09-06)
+
+
+### Features
+
+* sites add — claim a domain property by DNS TXT ([e8ca8dc](https://github.com/radityasurya/gsc-axi/commit/e8ca8dcea8348d2450ddc64831735ee0b9f23dab))
+
 ## [0.1.1](https://github.com/radityasurya/gsc-axi/compare/v0.1.0...v0.1.1) (2026-09-06)
 
 

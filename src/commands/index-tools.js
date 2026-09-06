@@ -53,6 +53,9 @@ export async function sitesCommand(argv) {
   };
 }
 
+const verdict = (block) =>
+  block?.verdict && block.verdict !== "VERDICT_UNSPECIFIED" ? block.verdict : undefined;
+
 /** The inspection payload nests three verdicts an agent has to act on. */
 function inspection(result) {
   const index = result?.indexStatusResult ?? {};
@@ -66,8 +69,10 @@ function inspection(result) {
       ? { your_canonical: index.userCanonical }
       : {}),
     ...(index.robotsTxtState ? { robots: index.robotsTxtState } : {}),
-    ...(result?.mobileUsabilityResult?.verdict ? { mobile: result.mobileUsabilityResult.verdict } : {}),
-    ...(result?.richResultsResult?.verdict ? { rich_results: result.richResultsResult.verdict } : {}),
+    // VERDICT_UNSPECIFIED is Google's "no data for this check" — printing it
+    // implies a result was returned when none was.
+    ...(verdict(result?.mobileUsabilityResult) ? { mobile: verdict(result.mobileUsabilityResult) } : {}),
+    ...(verdict(result?.richResultsResult) ? { rich_results: verdict(result.richResultsResult) } : {}),
   };
 }
 
@@ -88,12 +93,15 @@ export async function inspectCommand(argv) {
     url,
     site,
     ...result,
-    help: result.indexed
-      ? []
-      : [
-          "A NEUTRAL or FAIL verdict means Google has not indexed this URL",
-          `Run \`${BIN} sitemaps\` to check the sitemap covering it was read`,
-        ],
+    // AXI §9: a detail view that fully answers the question takes no suggestions.
+    ...(result.indexed
+      ? {}
+      : {
+          help: [
+            "A NEUTRAL or FAIL verdict means Google has not indexed this URL",
+            `Run \`${BIN} sitemaps\` to check the sitemap covering it was read`,
+          ],
+        }),
   };
 }
 
@@ -119,8 +127,9 @@ async function sitemapsList(argv) {
       type: entry.type ?? "-",
       submitted: String(entry.lastSubmitted ?? "").slice(0, 10),
       last_read: String(entry.lastDownloaded ?? "").slice(0, 10) || "never",
-      errors: entry.errors ?? 0,
-      warnings: entry.warnings ?? 0,
+      // Google returns these as strings; numbers render bare and compare right.
+      errors: Number(entry.errors ?? 0),
+      warnings: Number(entry.warnings ?? 0),
       pending: Boolean(entry.isPending),
     })),
   };

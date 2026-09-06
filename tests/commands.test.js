@@ -106,7 +106,8 @@ test("compare reports the delta against the preceding window", async () => {
   });
   const output = await compareCommand([]);
   assert.match(output.change.clicks, /120 \(\+20\.0%\)/);
-  assert.match(output.change.position, /9\.0 \(was 10\.0\)/);
+  // Position is inverted: a lower number is better, and the output says which.
+  assert.match(output.change.position, /9\.0 \(was 10\.0, better\)/);
 });
 
 test("inspect flattens the nested verdicts an agent has to act on", async () => {
@@ -122,7 +123,7 @@ test("inspect flattens the nested verdicts an agent has to act on", async () => 
           userCanonical: "https://example.com/post",
           robotsTxtState: "ALLOWED",
         },
-        mobileUsabilityResult: { verdict: "PASS" },
+        mobileUsabilityResult: { verdict: "VERDICT_UNSPECIFIED" },
       },
     },
   });
@@ -130,7 +131,8 @@ test("inspect flattens the nested verdicts an agent has to act on", async () => 
   assert.equal(output.indexed, true);
   assert.equal(output.coverage, "Submitted and indexed");
   assert.ok(!("your_canonical" in output), "an agreeing canonical is not worth a row");
-  assert.deepEqual(output.help, [], "a passing verdict needs no next step");
+  assert.ok(!("help" in output), "a passing verdict needs no next step — and no empty help key");
+  assert.ok(!("mobile" in output), "VERDICT_UNSPECIFIED is 'no data', not a result");
 });
 
 test("inspect surfaces a canonical mismatch and what to do about it", async () => {
@@ -179,4 +181,15 @@ test("sites explains the service-account gotcha when nothing is visible", async 
   const output = await sitesCommand([]);
   assert.match(output.sites, /0 properties/);
   assert.match(output.help.join(" "), /client_email/);
+});
+
+test("a page breakdown does not suggest the page breakdown", async () => {
+  mockGoogle({ ...oneSite, [ANALYTICS]: rows([{ keys: ["/"], clicks: 3, impressions: 55, ctr: 0.055, position: 5.4 }]) });
+  const pages = await performanceCommand(["--by", "page"]);
+  assert.ok(!pages.help.some((line) => line.includes("--by page")), "suggesting the current view is noise");
+  assert.ok(pages.help.some((line) => line.includes("--by query")));
+
+  mockGoogle({ ...oneSite, [ANALYTICS]: rows([{ keys: ["q"], clicks: 1, impressions: 9, ctr: 0.11, position: 8 }]) });
+  const queries = await performanceCommand([]);
+  assert.ok(queries.help.some((line) => line.includes("--by page")));
 });

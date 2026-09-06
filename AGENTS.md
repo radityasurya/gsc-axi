@@ -72,3 +72,27 @@ npm trust github gsc-axi --repo radityasurya/gsc-axi --file release-please.yml -
 A new repository also needs **Settings → Actions → Workflow permissions** set to read/write
 with "Allow GitHub Actions to create and approve pull requests" enabled, or release-please
 builds the branch and then cannot open the PR.
+
+## Verified against a live property (2026-09-06)
+
+Every read command has been run against a real Search Console property with real
+traffic. Four output defects only showed up there, none of which a stub would have
+produced — the stub returns what the test author imagined, not what Google sends:
+
+- **`help: []`** on a passing `inspect`. The ternary returned an empty array rather than
+  omitting the key. AXI §9: a detail view that answers the question takes no suggestions,
+  and an empty `help` is worse than none — it looks like the tool had nothing to say.
+- **`mobile: VERDICT_UNSPECIFIED`.** Google's enum for "this check produced no data",
+  which read as a result. `verdict()` filters it, along with `richResultsResult`.
+- **The help suggested the view already on screen** — `performance --by page` recommending
+  `--by page`. Now dimension-aware.
+- **`errors: "0"`.** The sitemaps API returns counts as strings, so they came through
+  quoted and would sort lexically. Coerced to numbers.
+
+## Position is the one inverted metric (`src/commands/performance.js#direction`)
+
+Every other number is better when it grows. Average position is better when it *shrinks*, so
+`compare` prints `25.0 (was 11.4, worse)` rather than leaving a reader — human or agent — to
+infer the direction from a bare pair of numbers. On the reference property clicks rose 33%
+while position fell from 11.4 to 25.0; reporting only the clicks would have been a
+misleading summary of the same window.

@@ -168,10 +168,19 @@ export async function performanceCommand(argv) {
     count: `${rows.length} shown`,
     [`by_${dimension}`]: rows.map((entry) => row(entry, [dimension])),
     help: [
-      `Run \`${BIN} performance --by page\` for the pages behind these`,
+      // Suggesting the view the agent is already looking at is noise (§9).
+      ...(dimension === "page"
+        ? [`Run \`${BIN} performance --by query\` for the queries earning these`]
+        : [`Run \`${BIN} performance --by page\` for the pages behind these`]),
       `Run \`${BIN} opportunities\` for queries ranking 4-20`,
     ],
   };
+}
+
+/** Lower average position is better; unchanged within 0.05 is "flat". */
+function direction(now, before) {
+  if (Math.abs(now - before) < 0.05) return "flat";
+  return now < before ? "better" : "worse";
 }
 
 function delta(now, before) {
@@ -195,7 +204,9 @@ export async function compareCommand(argv) {
     clicks: `${current.clicks} (${delta(current.clicks, prior.clicks)})`,
     impressions: `${current.impressions} (${delta(current.impressions, prior.impressions)})`,
     ctr: `${(current.ctr * 100).toFixed(1)}% (was ${(prior.ctr * 100).toFixed(1)}%)`,
-    position: `${current.position.toFixed(1)} (was ${prior.position.toFixed(1)})`,
+    // Position is the one metric where a bigger number is worse, so say so
+    // rather than leaving a reader to infer it from the direction.
+    position: `${current.position.toFixed(1)} (was ${prior.position.toFixed(1)}, ${direction(current.position, prior.position)})`,
   };
 
   if (!values.by) {

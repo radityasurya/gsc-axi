@@ -1,0 +1,39 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - uses: actions/checkout@v4
+        if: ${{ steps.release.outputs.release_created }}
+      - uses: actions/setup-node@v4
+        if: ${{ steps.release.outputs.release_created }}
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - if: ${{ steps.release.outputs.release_created }}
+        run: npm ci
+      - if: ${{ steps.release.outputs.release_created }}
+        run: npm test
+      # Trusted publishing (OIDC): npm verifies this workflow's identity via the
+      # id-token above, so there is no long-lived token to store or leak. Configured
+      # with `npm trust github gsc-axi --repo <nwo> --file release-please.yml`.
+      # Provenance is generated automatically; no NODE_AUTH_TOKEN.
+      - if: ${{ steps.release.outputs.release_created }}
+        run: npm publish --access public

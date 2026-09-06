@@ -96,3 +96,31 @@ Every other number is better when it grows. Average position is better when it *
 infer the direction from a bare pair of numbers. On the reference property clicks rose 33%
 while position fell from 11.4 to 25.0; reporting only the clicks would have been a
 misleading summary of the same window.
+
+## The token cache must be keyed by scope (`src/api.js#accessToken`)
+
+`sitemaps submit` lists the existing sitemaps before it PUTs. The list is a read, the PUT is
+a write, and they need tokens minted for different scopes. A single process-level `cached`
+token meant the write reused the read-only one, and Google answered:
+
+```
+403 Request had insufficient authentication scopes.
+```
+
+Only a real write against a real property surfaced this — every test stubbed the token
+endpoint and never inspected which scope was requested. `tests/api.test.js` now decodes the
+JWT assertions and asserts one token per scope.
+
+## Google returns 403 for two unrelated causes
+
+"This account has no access to that property" and "the token lacks the scope for this
+operation" are the same status code. Translating both to the former sends someone to
+Search Console's user list when the credential was the problem — the same failure this tool
+criticises in other APIs. `apiError` branches on `/insufficient (authentication )?scope/`.
+
+## Verified against a live property with a service account (2026-09-06)
+
+The service-account JWT path — the one the README recommends and the most bespoke code in
+the tool — was exercised end to end: `sites` (returns only the properties the service account
+was added to, 1 versus 7 for a personal OAuth grant), the dashboard, `performance`,
+`compare`, `opportunities`, `inspect`, `sitemaps`, and `sitemaps submit`.

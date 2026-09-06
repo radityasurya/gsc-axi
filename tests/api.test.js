@@ -95,3 +95,38 @@ test("403 points at the property's user list, not the credentials", async () => 
     return true;
   });
 });
+
+test("a write after a read mints a token for the write scope", async () => {
+  withServiceAccount();
+  const map = "https://example.com/sitemap.xml";
+  const calls = mockGoogle({
+    ...oneSite,
+    [`GET /sites/${encodeURIComponent(SITE)}/sitemaps`]: { sitemap: [] },
+    [`PUT /sites/${encodeURIComponent(SITE)}/sitemaps/${encodeURIComponent(map)}`]: {},
+  });
+  const { sitemapsCommand } = await import("../src/commands/index-tools.js");
+  await sitemapsCommand(["submit", map]);
+
+  // `submit` lists first (read scope) and then PUTs (write scope). One cached
+  // token for the process meant the PUT reused the read-only one, and Google
+  // answered "Request had insufficient authentication scopes".
+  const scopes = calls
+    .filter((call) => call.url.includes("oauth2.googleapis.com"))
+    .map((call) => JSON.parse(Buffer.from(new URLSearchParams(call.body).get("assertion").split(".")[1], "base64url").toString()).scope);
+  assert.equal(scopes.length, 2, "one token per scope, not one per process");
+  assert.ok(scopes.some((s) => s.endsWith("webmasters.readonly")));
+  assert.ok(scopes.some((s) => s.endsWith("/auth/webmasters")));
+});
+
+test("an insufficient-scope 403 does not blame the property's user list", async () => {
+  mockGoogle({
+    "GET /sites": fails(403, { error: { message: "Request had insufficient authentication scopes." } }),
+  });
+  await assert.rejects(() => listSites({}), (error) => {
+    assert.equal(error.code, "AUTH_ERROR");
+    const help = error.suggestions.join(" ");
+    assert.match(help, /read-only/);
+    assert.ok(!help.includes("Users and permissions"), "wrong cause sends the reader to the wrong console page");
+    return true;
+  });
+});

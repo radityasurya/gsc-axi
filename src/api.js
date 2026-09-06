@@ -108,22 +108,28 @@ async function exchange(body, fetchImpl, context) {
   return payload.access_token;
 }
 
-let cached;
+// Keyed by scope: a token minted for the read scope cannot perform a write, and
+// `sitemaps submit` reads the existing list before it PUTs. Caching one token
+// for the process meant the write reused the read-only one and Google answered
+// "Request had insufficient authentication scopes".
+const cached = new Map();
+
 export async function accessToken(options = {}) {
   const { env = process.env, write = false, fetchImpl = fetch } = options;
-  if (cached) return cached;
+  const scope = write ? WRITE_SCOPE : READ_SCOPE;
+  if (cached.has(scope)) return cached.get(scope);
   if (!hasCredentials(env)) {
     throw new AxiError("No Google credentials in the environment", "AUTH_REQUIRED", CREDENTIAL_HELP);
   }
-  const scope = write ? WRITE_SCOPE : READ_SCOPE;
-  cached = env.GOOGLE_APPLICATION_CREDENTIALS
+  const token = env.GOOGLE_APPLICATION_CREDENTIALS
     ? await serviceAccountToken(env.GOOGLE_APPLICATION_CREDENTIALS, scope, fetchImpl)
     : await refreshTokenGrant(env, fetchImpl);
-  return cached;
+  cached.set(scope, token);
+  return token;
 }
 
 export function resetTokenCache() {
-  cached = undefined;
+  cached.clear();
 }
 
 function apiError(status, payload, path) {
@@ -137,6 +143,16 @@ function apiError(status, payload, path) {
     ]);
   }
   if (status === 403) {
+    // Google returns 403 for two unrelated causes; sending someone to the
+    // property's user list when the problem is the token's scope wastes the
+    // one piece of information the error actually carried.
+    if (/insufficient (authentication )?scope/i.test(message)) {
+      return new AxiError(message, "AUTH_ERROR", [
+        "The token was minted for read-only access but this command writes",
+        "An OAuth refresh token granted `webmasters.readonly` cannot submit sitemaps",
+        "Use a service account, or re-consent with the `webmasters` scope",
+      ]);
+    }
     return new AxiError(message, "AUTH_ERROR", [
       "This account has no access to that property",
       "Add it as a user in Search Console: Settings -> Users and permissions",

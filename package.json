@@ -1,20 +1,42 @@
 {
   "name": "gsc-axi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AXI-compliant Google Search Console CLI — search performance, URL inspection, and sitemaps with token-efficient TOON output",
-  "keywords": ["axi", "google-search-console", "gsc", "seo", "agent", "cli", "toon"],
+  "keywords": [
+    "axi",
+    "google-search-console",
+    "gsc",
+    "seo",
+    "agent",
+    "cli",
+    "toon"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/radityasurya/gsc-axi.git"
   },
   "homepage": "https://github.com/radityasurya/gsc-axi#readme",
-  "bugs": { "url": "https://github.com/radityasurya/gsc-axi/issues" },
+  "bugs": {
+    "url": "https://github.com/radityasurya/gsc-axi/issues"
+  },
   "license": "MIT",
   "type": "module",
-  "bin": { "gsc-axi": "bin/gsc-axi.js" },
-  "exports": { ".": "./src/cli.js" },
-  "files": ["bin", "src", "skills", "README.md", "LICENSE"],
-  "engines": { "node": ">=20" },
+  "bin": {
+    "gsc-axi": "bin/gsc-axi.js"
+  },
+  "exports": {
+    ".": "./src/cli.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "node --test",
     "build:skill": "node scripts/build-skill.mjs",

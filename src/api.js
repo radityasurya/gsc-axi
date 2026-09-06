@@ -5,10 +5,14 @@ import { BIN } from "./args.js";
 
 const WEBMASTERS = "https://www.googleapis.com/webmasters/v3";
 const SEARCHCONSOLE = "https://searchconsole.googleapis.com/v1";
+const SITEVERIFICATION = "https://www.googleapis.com/siteVerification/v1";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 const READ_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
 const WRITE_SCOPE = "https://www.googleapis.com/auth/webmasters";
+// Claiming a property is a different product's API with its own scope; a
+// webmasters token cannot verify, and a siteverification token cannot list.
+const VERIFY_SCOPE = "https://www.googleapis.com/auth/siteverification";
 
 export const CREDENTIAL_HELP = [
   "Service account: create one in Google Cloud, enable the Search Console API, download its JSON key",
@@ -116,7 +120,7 @@ const cached = new Map();
 
 export async function accessToken(options = {}) {
   const { env = process.env, write = false, fetchImpl = fetch } = options;
-  const scope = write ? WRITE_SCOPE : READ_SCOPE;
+  const scope = options.scope ?? (write ? WRITE_SCOPE : READ_SCOPE);
   if (cached.has(scope)) return cached.get(scope);
   if (!hasCredentials(env)) {
     throw new AxiError("No Google credentials in the environment", "AUTH_REQUIRED", CREDENTIAL_HELP);
@@ -151,6 +155,18 @@ function apiError(status, payload, path) {
         "The token was minted for read-only access but this command writes",
         "An OAuth refresh token granted `webmasters.readonly` cannot submit sitemaps",
         "Use a service account, or re-consent with the `webmasters` scope",
+        "Claiming a property also needs the `siteverification` scope and the Site Verification API enabled",
+      ]);
+    }
+    // A disabled API and a missing grant are both 403, and they need opposite
+    // fixes — sending someone to the property's user list when the API was
+    // never switched on costs them the one detail the error did carry.
+    const disabled = message.match(/^(.+? API) has not been used in project (\d+)/);
+    if (disabled) {
+      return new AxiError(message, "AUTH_ERROR", [
+        `Enable the ${disabled[1]} for project ${disabled[2]} in the Google Cloud console`,
+        "This is a project setting, not a Search Console permission — adding users will not fix it",
+        "Enabling takes a few minutes to propagate before a retry succeeds",
       ]);
     }
     return new AxiError(message, "AUTH_ERROR", [
@@ -175,8 +191,16 @@ function apiError(status, payload, path) {
 
 /** One authenticated request against the Search Console API. */
 export async function gsc(path, options = {}) {
-  const { method = "GET", body, base = WEBMASTERS, env = process.env, fetchImpl = fetch, write = false } = options;
-  const token = await accessToken({ env, write, fetchImpl });
+  const {
+    method = "GET",
+    body,
+    base = WEBMASTERS,
+    env = process.env,
+    fetchImpl = fetch,
+    write = false,
+    scope,
+  } = options;
+  const token = await accessToken({ env, write, fetchImpl, scope });
 
   let response;
   try {
@@ -201,6 +225,8 @@ export async function gsc(path, options = {}) {
 }
 
 export const inspectionBase = SEARCHCONSOLE;
+export const verificationBase = SITEVERIFICATION;
+export const verifyScope = VERIFY_SCOPE;
 
 /** Property strings are URLs or `sc-domain:` prefixed, and must be encoded whole. */
 export function sitePath(site, suffix = "") {

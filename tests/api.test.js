@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { listSites, resolveSite } from "../src/api.js";
+import { gsc, listSites, resolveSite } from "../src/api.js";
 import { SITE, fails, mockGoogle, oneSite, withRefreshToken, withServiceAccount } from "./helpers.js";
 
 test.beforeEach(withRefreshToken);
@@ -127,6 +127,27 @@ test("an insufficient-scope 403 does not blame the property's user list", async 
     const help = error.suggestions.join(" ");
     assert.match(help, /read-only/);
     assert.ok(!help.includes("Users and permissions"), "wrong cause sends the reader to the wrong console page");
+    return true;
+  });
+});
+
+test("a disabled API is not reported as a missing property grant", async () => {
+  mockGoogle({
+    "GET /sites": {
+      __status: 403,
+      payload: {
+        error: {
+          message:
+            "Site Verification API has not been used in project 309994924893 before or it is disabled.",
+        },
+      },
+    },
+  });
+  await assert.rejects(() => gsc("/sites"), (error) => {
+    const help = error.suggestions.join(" ");
+    assert.match(help, /Enable the Site Verification API for project 309994924893/);
+    // The old message sent you to Settings -> Users, which cannot fix a disabled API.
+    assert.doesNotMatch(help, /Users and permissions/);
     return true;
   });
 });

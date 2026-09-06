@@ -1,13 +1,28 @@
 import { AxiError } from "axi-sdk-js";
-import { gsc, inspectionBase, listSites, resolveSite, sitePath } from "../api.js";
+import {
+  gsc,
+  inspectionBase,
+  listSites,
+  resolveSite,
+  sitePath,
+  verificationBase,
+  verifyScope,
+} from "../api.js";
 import { BIN, helpFor, makeDispatcher, parse, required, wantsHelp } from "../args.js";
 
 const HELP = {
   sites: helpFor({
-    command: "sites",
+    command: "sites list",
     description: "Properties this account can reach, and its permission on each",
-    usage: `${BIN} sites`,
+    usage: `${BIN} sites [list]`,
     examples: [`${BIN} sites`],
+  }),
+  add: helpFor({
+    command: "sites add",
+    description:
+      "Claim a domain as a Search Console property: prints the DNS TXT to add, verifies once it resolves, then registers it",
+    usage: `${BIN} sites add <domain>`,
+    examples: [`${BIN} sites add example.com`, `${BIN} sites add sc-domain:example.com`],
   }),
   inspect: helpFor({
     command: "inspect",
@@ -29,9 +44,9 @@ const HELP = {
   }),
 };
 
-export async function sitesCommand(argv) {
+async function sitesList(argv) {
   if (wantsHelp(argv)) return HELP.sites;
-  parse(argv, { command: "sites" });
+  parse(argv, { command: "sites list" });
   const sites = await listSites({});
 
   if (sites.length === 0) {
@@ -48,10 +63,96 @@ export async function sitesCommand(argv) {
     sites: sites.map((entry) => ({ property: entry.siteUrl, permission: entry.permissionLevel })),
     help: [
       `Run \`${BIN} performance --site <property>\` for its search traffic`,
+      `Run \`${BIN} sites add <domain>\` to claim another one`,
       "Export GSC_SITE to make one the default",
     ],
   };
 }
+
+/** `example.com`, `sc-domain:example.com` and `https://example.com/` all mean one domain. */
+function bareDomain(input) {
+  const stripped = input.replace(/^sc-domain:/, "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(stripped)) {
+    throw new AxiError(`${input} is not a domain`, "VALIDATION_ERROR", [
+      `Pass the apex domain: ${BIN} sites add example.com`,
+    ]);
+  }
+  return stripped;
+}
+
+async function sitesAdd(argv) {
+  if (wantsHelp(argv)) return HELP.add;
+  const { positionals } = parse(argv, { command: "sites add" });
+  const domain = bareDomain(
+    required(positionals[0], "<domain>", "sites add", `${BIN} sites add example.com`),
+  );
+  const property = `sc-domain:${domain}`;
+
+  const already = await listSites({});
+  if (already.some((entry) => entry.siteUrl === property)) {
+    return {
+      property,
+      unchanged: true,
+      note: `${property} is already on this account (no-op)`,
+      help: [`Run \`${BIN} sitemaps submit https://${domain}/sitemap.xml --site ${property}\``],
+    };
+  }
+
+  const site = { type: "INET_DOMAIN", identifier: domain };
+  const verifyOptions = { base: verificationBase, scope: verifyScope };
+
+  // Verification is what makes the property claimable, and it can only succeed
+  // once the TXT resolves — so ask for the token first and hand it back if the
+  // record is not live yet. Re-running once DNS has propagated finishes the job.
+  const { token } = await gsc("/token", {
+    ...verifyOptions,
+    method: "POST",
+    body: { verificationMethod: "DNS_TXT", site },
+  });
+
+  try {
+    await gsc("/webResource?verificationMethod=DNS_TXT", {
+      ...verifyOptions,
+      method: "POST",
+      body: { site },
+    });
+  } catch (error) {
+    if (error.code === "AUTH_ERROR" && !/verif/i.test(error.message)) throw error;
+    return {
+      property,
+      verified: false,
+      dns_record: { name: domain, type: "TXT", content: token },
+      help: [
+        `Add that TXT record, then re-run \`${BIN} sites add ${domain}\``,
+        `With cloudflare-axi: \`cloudflare-axi dns set @ TXT "${token}" --zone ${domain}\``,
+        `Google refused verification: ${error.message}`,
+      ],
+    };
+  }
+
+  await gsc(sitePath(property), { method: "PUT", write: true });
+  return {
+    property,
+    verified: true,
+    created: true,
+    help: [
+      `Run \`${BIN} sitemaps submit https://${domain}/sitemap.xml --site ${property}\``,
+      "Keep the TXT record in place — removing it un-verifies the property",
+    ],
+  };
+}
+
+export const sitesCommand = makeDispatcher(
+  "sites",
+  { list: sitesList, add: sitesAdd },
+  {
+    fallback: "list",
+    summary: {
+      list: "Properties this account can reach",
+      add: "Claim a domain as a property (verify by DNS TXT, then register)",
+    },
+  },
+);
 
 const verdict = (block) =>
   block?.verdict && block.verdict !== "VERDICT_UNSPECIFIED" ? block.verdict : undefined;

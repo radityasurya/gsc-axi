@@ -25,7 +25,7 @@ export const TOP_HELP = `${encode({
   usage: `${BIN} [command] [args] [flags]`,
   commands: {
     "(none)": "dashboard — this month's search traffic and top queries",
-    sites: "properties this account can reach",
+    sites: "list, add — properties this account can reach, and claiming new ones",
     performance: "clicks, impressions, CTR, position by query, page, country, device",
     compare: "this window against the one before it",
     opportunities: "queries ranking 4-20 with real volume",

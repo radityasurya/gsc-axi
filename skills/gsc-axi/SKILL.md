@@ -32,7 +32,8 @@ Console (Settings → Users and permissions). Adding *your* email does nothing f
 
 ```sh
 npx -y gsc-axi                                  # dashboard: traffic, change, top queries
-npx -y gsc-axi sites                            # properties this account can reach
+npx -y gsc-axi sites
+npx -y gsc-axi sites add example.com                            # properties this account can reach
 npx -y gsc-axi performance --by page --range 90d
 npx -y gsc-axi performance --by query --contains pricing
 npx -y gsc-axi compare --by query               # what moved vs the previous window
@@ -45,6 +46,11 @@ npx -y gsc-axi sitemaps submit https://example.com/sitemap.xml
 Every command takes `--help`, and `--site <property>` to target a specific property.
 
 ## What to rely on
+
+- **Claiming a property is two runs, not one.** `sites add <domain>` asks Google for the
+  DNS TXT token and hands it back; publish that record, then re-run the same command to
+  verify and register. It is idempotent — a property already on the account is a no-op.
+  Removing the TXT afterwards un-verifies the property.
 
 - **Windows end where the data is final.** Search Console lags 2-3 days, so a named
   `--range` ends there rather than today. Ending today would show a decline that is not real.

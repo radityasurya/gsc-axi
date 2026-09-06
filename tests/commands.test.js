@@ -193,3 +193,77 @@ test("a page breakdown does not suggest the page breakdown", async () => {
   const queries = await performanceCommand([]);
   assert.ok(queries.help.some((line) => line.includes("--by page")));
 });
+
+const VERIFY_TOKEN = "POST /siteVerification/v1/token";
+const VERIFY_INSERT = "POST /siteVerification/v1/webResource";
+const NO_SITES = { "GET /sites": { siteEntry: [] } };
+
+test("sites add returns the TXT to publish when the domain is not verified yet", async () => {
+  const calls = mockGoogle({
+    ...NO_SITES,
+    [VERIFY_TOKEN]: { method: "DNS_TXT", token: "google-site-verification=abc123" },
+    [VERIFY_INSERT]: { __status: 400, payload: { error: { message: "Domain could not be verified" } } },
+  });
+  const output = await sitesCommand(["add", "example.com"]);
+
+  assert.equal(output.verified, false);
+  assert.deepEqual(output.dns_record, {
+    name: "example.com",
+    type: "TXT",
+    content: "google-site-verification=abc123",
+  });
+  // Registering an unverified property would fail; it must not be attempted.
+  assert.equal(calls.filter((c) => c.method === "PUT").length, 0);
+});
+
+test("sites add registers the property once verification passes", async () => {
+  const calls = mockGoogle({
+    ...NO_SITES,
+    [VERIFY_TOKEN]: { method: "DNS_TXT", token: "google-site-verification=abc123" },
+    [VERIFY_INSERT]: { id: "dns://example.com" },
+    [`PUT /sites/${encodeURIComponent("sc-domain:example.com")}`]: {},
+  });
+  const output = await sitesCommand(["add", "example.com"]);
+
+  assert.equal(output.verified, true);
+  assert.equal(output.created, true);
+  assert.equal(output.property, "sc-domain:example.com");
+  assert.equal(calls.filter((c) => c.method === "PUT").length, 1);
+});
+
+test("sites add is a no-op when the property is already on the account", async () => {
+  const calls = mockGoogle({
+    "GET /sites": { siteEntry: [{ siteUrl: "sc-domain:example.com", permissionLevel: "siteOwner" }] },
+  });
+  const output = await sitesCommand(["add", "example.com"]);
+
+  assert.equal(output.unchanged, true);
+  // The OAuth token mint is a POST too, so count only the calls that matter.
+  const touched = calls.filter((c) => /siteVerification|\/sites\//.test(c.url) && c.method !== "GET");
+  assert.deepEqual(touched, [], "a no-op must not re-verify or re-register");
+});
+
+test("sites add accepts sc-domain: and https:// spellings of the same domain", async () => {
+  for (const input of ["sc-domain:example.com", "https://example.com/", "example.com"]) {
+    mockGoogle({
+      "GET /sites": { siteEntry: [{ siteUrl: "sc-domain:example.com", permissionLevel: "siteOwner" }] },
+    });
+    const output = await sitesCommand(["add", input]);
+    assert.equal(output.property, "sc-domain:example.com", `for ${input}`);
+  }
+});
+
+test("a path or a non-domain is rejected before any request", async () => {
+  const calls = mockGoogle({});
+  await assert.rejects(() => sitesCommand(["add", "not a domain"]), (error) => {
+    assert.equal(error.code, "VALIDATION_ERROR");
+    return true;
+  });
+  assert.equal(calls.length, 0);
+});
+
+test("bare `sites` still lists, so the dispatcher did not change the old entry point", async () => {
+  mockGoogle(oneSite);
+  const output = await sitesCommand([]);
+  assert.equal(output.sites[0].property, SITE);
+});

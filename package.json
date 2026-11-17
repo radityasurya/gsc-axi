@@ -44,6 +44,6 @@
   },
   "dependencies": {
     "axi-sdk-js": "^0.1.11",
-    "@toon-format/toon": "^0.9.0"
+    "@toon-format/toon": "^4.0.0"
   }
 }
